@@ -1,0 +1,238 @@
+---
+title: 'Deep Learning for Tweet Sentiment Detection with H2O'
+author: 'Cillian Berragan'
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  bookdown::html_document2:
+    number_sections: false
+    smooth_scroll: true
+    css: theme/style.css
+bibliography: 
+    - /home/cjber/drive/bib/zbib.bib
+    - bib/rbib.bib
+biblio-style: "apalike"
+link-citations: true
+---
+
+```{r, include=FALSE}
+cjrmd::default_html_chunk_opts(cache = TRUE)
+knitr::opts_chunk$set(
+    cache = TRUE,
+    echo = FALSE,
+    message = FALSE,
+    warning = FALSE,
+    comment = FALSE
+)
+
+if (!require("pacman")) install.packages("pacman")
+pkgs <- c(
+    "bibtex",
+    "h2o",
+    "rmarkdown",
+    "bookdown",
+    "twitteR"
+)
+pacman::p_load(pkgs, character.only = T)
+knitr::opts_chunk$set(
+    message = FALSE,
+    warning = FALSE,
+    comment = NA,
+    cache = TRUE
+)
+write.bib(pkgs, "bib/rbib.bib")
+```
+
+```{r, echo=FALSE, results='hide'}
+source("../scripts/w2v_twitter.R")
+```
+
+# Executive Summary
+
+This report presents the results of a Natural Language sentiment analysis exercise using a dataset containing `r format(nrow(train), big.mark=',')` labelled tweets created by [Figure Eight's Data for Everyone platform](https://appen.com/resources/datasets/) and accessed through [Kaggle](https://kaggle.com). There is also an included test dataset with `r format(nrow(test), big.mark=',')` labelled tweets for evaluation. The data is licenced under the [creative commons attribution 4.0. international licence](https://creativecommons.org/licenses/by/4.0/).
+
+The R package `h2o` [@h2o] is primarily used for the construction of models in this report, providing high level abstractions for working with state of the art machine learning algorithms. AutoML is also provided through `h2o.automl` which automates the model selection work-flow, enabling the selection of the best performing model on a particular dataset for a task with little user input.
+
+This report was compiled using R Markdown [@rmarkdown1], using the Bookdown package [@bookdown1], and a [CSS theme](https://github.com/vincentdoerig/latex-css) created to resemble LaTeX.
+
+# Introduction
+
+# Methods
+
+The training data was first cleaned by removing any web addresses, numbers and long repeated characters using regular expressions. The text was then tokenized using simple space delimitation, and converted to all lowercase. Any word fewer than two characters was also removed.
+
+To prepare for use in the first model, Word2Vec vector embeddings were created using the `h2o.word2vec` function, using these embeddings, each tweet was then encoded to a single dimension using the average Word2Vec embeddings (`h2o.transform`). A Gradient Boosting Machine (GBM) model was then built using these embeddings using 5 fold cross-validation to predict whether a tweet contained positive or negative sentiment (neutral sentiment excluded). This model was then evaluated on unseen test data and given an F Score.
+
+Following this model the `h2o.automl` function was used to select the best performing model out a selection of predefined model compositions and a comparison made using the F Score from the best AutoML model and the GBM.
+
+Finally, with this suitable sentiment analysis model (trained on tweets), the sentiment of unlabelled tweets was extracted. The `twitteR` [@twitteR] package was used to interface with the Twitter API and using the search phrases _"apple"_ and _"linux"_, the sentiment for 10,000 tweets for each phrase was determined.
+
+## Data
+
+# Results
+
+## Overview
+
+```{r, f_scores}
+f_scores <- read.csv("../data/fscores.csv")
+
+f_scores %>% cjrmd::make_html_table(
+    cap = "F Score comparison between two models.",
+    col_names = c("", "Model Type", "F Score")
+)
+```
+
+```{r, results='hide'}
+linux <- read.csv("../data/linux.csv") %>%
+    as.h2o()
+apple <- read.csv("../data/apple.csv") %>%
+    as.h2o()
+
+model <- h2o.upload_model(path = aml_path)
+w2v_model <- h2o.upload_model(path = w2v_path)
+
+linux_preds <- .predict(linux$text, w2v_model, model)
+linux_preds <- ifelse(linux_preds$predict == "positive", 1, 0)
+
+apple_preds <- .predict(apple$text, w2v_model, model)
+apple_preds <- ifelse(apple_preds$predict == "positive", 1, 0)
+```
+
+Ratio of positive sentiment to negative for Linux related tweets `r print(sum(linux_preds) / nrow(linux_preds))`. Ratio for apple: `r print(sum(apple_preds) / nrow(apple_preds))`.
+
+Chatterplot from [here](https://towardsdatascience.com/rip-wordclouds-long-live-chatterplots-e76a76896098). Replacing the pie chart of text data.
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+library(tidytext)
+
+gg_scattertext <- function(word, preds, count) {
+    ggplot() +
+        aes(preds, count, label = word) +
+        geom_text_repel(
+            segment.alpha = 0,
+            aes(colour = preds, size = count)
+        ) +
+        scale_colour_gradient(
+            low = "red",
+            high = "green",
+            trans = "log10",
+            guide = guide_colourbar(
+                direction = "horizontal",
+                title.position = "top"
+            )
+        ) +
+        scale_size_continuous(
+            range = c(3, 10),
+            guide = FALSE
+        ) +
+        scale_x_log10() +
+        ggtitle(paste0(
+            "Top 100 words from ",
+            nrow(df),
+            " Tweets"
+        ),
+        subtitle = "word frequency (size) ~ overall sentiment (colour)"
+        ) +
+        labs(
+            y = "Word frequency",
+            x = "Total sentiment (log)"
+        ) +
+        theme_minimal() +
+        theme(
+            legend.position = c(.01, .99),
+            legend.justification = c("left", "top")
+        )
+}
+```
+
+```{r chatterplot_linux}
+linux_plot <- linux$text %>%
+    h2o.strsplit(r"(\\W)") %>%
+    as.data.frame() %>%
+    mutate(
+        id = linux$id %>% as.data.frame(),
+        preds = linux_preds %>% as.data.frame()
+    ) %>%
+    pivot_longer(-c(id, preds),
+        values_drop_na = TRUE,
+        values_to = "word"
+    ) %>%
+    select(c(id, word, preds)) %>%
+    group_by(word) %>%
+    anti_join(get_stopwords()) %>%
+    filter(nchar(word) > 2) %>%
+    filter(
+        !grepl("RT", word, ignore.case = TRUE),
+        !grepl("Linux", word, ignore.case = TRUE),
+        !grepl("https", word, ignore.case = TRUE),
+        !grepl("co", word, ignore.case = TRUE),
+    ) %>%
+    # add 1 so no log(0)
+    summarise(preds = sum(preds) + 1, count = n()) %>%
+    arrange(desc(count)) %>%
+    head(100)
+
+gg_scattertext(linux_plot$word, linux_plot$preds, linux_plot$count)
+```
+
+```{r chatterplot_apple}
+apple_plot <- apple$text %>%
+    h2o.strsplit(r"(\\W)") %>%
+    as.data.frame() %>%
+    mutate(
+        id = apple$id %>% as.data.frame(),
+        preds = apple_preds %>% as.data.frame()
+    ) %>%
+    pivot_longer(-c(id, preds),
+        values_drop_na = TRUE,
+        values_to = "word"
+    ) %>%
+    select(c(id, word, preds)) %>%
+    group_by(word) %>%
+    anti_join(get_stopwords()) %>%
+    filter(nchar(word) > 2) %>%
+    filter(
+        !grepl("https", word, ignore.case = TRUE),
+        !grepl("Apple", word, ignore.case = TRUE),
+        !grepl("Mac", word, ignore.case = TRUE),
+        !grepl("Macbook", word, ignore.case = TRUE),
+        !grepl("Pro", word, ignore.case = TRUE)
+    ) %>%
+    # add one so no log(0)
+    summarise(preds = sum(preds) + 1, count = n()) %>%
+    arrange(desc(count)) %>%
+    head(100)
+
+gg_scattertext(apple_plot$word, apple_plot$preds, apple_plot$count)
+```
+
+
+
+## Model Results
+
+# Conclusion
+
+## Recommendations
+
+Test.
+
+<hr>
+Word count: `r wordcountaddin::word_count(rprojroot::thisfile())`
+<hr>
+
+### References
+
+<div id="refs"></div>
+
+## Appendix {-}
+
+### Figures
+
+```{r ref.label='chatterplot_linux', eval = FALSE}
+
+```
+
+```{r ref.label='chatterplot_apple', eval = FALSE}
+
+```
