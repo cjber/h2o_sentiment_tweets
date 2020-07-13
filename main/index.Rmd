@@ -56,6 +56,8 @@ This report was compiled using R Markdown [@rmarkdown1], using the Bookdown pack
 
 # Introduction
 
+State here reasoning for using complex models etc.
+
 # Methods
 
 The training data was first cleaned by removing any web addresses, numbers and long repeated characters using regular expressions. The text was then tokenized using simple space delimitation, and converted to all lowercase. Any word fewer than two characters was also removed.

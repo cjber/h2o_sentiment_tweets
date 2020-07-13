@@ -1,10 +1,10 @@
 library(twitteR)
 library(tidyverse)
 
-consumer_key <- "7Cv6QTdfKvzlZKKGQ8a5VyD7u"
-consumer_secret <- "nMNsOiAwJpVg4zBnwan6k1xTm4ql6DLF06v6HhyYtFrxWidndE"
-access_token <- "390378238-W1likclkOKb1hR0Gdq5Fwwk9u9HW8VgJHPBknIBx"
-access_secret <- "p7RKAduP3TJ4YNLeRv4H4hAz2PgDFr7GZEk7ilEcKLW4B"
+consumer_key <- ""
+consumer_secret <- ""
+access_token <- ""
+access_secret <- ""
 
 setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
 tw <- searchTwitter("apple",
