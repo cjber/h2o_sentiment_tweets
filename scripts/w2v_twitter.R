@@ -57,9 +57,25 @@ gbm_model <- h2o.gbm(
     y = "sentiment",
     training_frame = data_split[[1]],
     validation_frame = data_split[[2]],
-    nfolds = 5,
-    seed = 1
+    seed = 1234
 )
+gbm_base_auc <- h2o.auc(h2o.performance(gbm_model, valid = TRUE))
+
+gbm_ifl <- h2o.gbm(
+    x = names(tweet_vecs),
+    y = "sentiment",
+    training_frame = data_split[[1]],
+    validation_frame = data_split[[2]],
+    ntrees = 10000,
+    learn_rate = 0.01,
+    stopping_rounds = 5, stopping_tolerance = 1e-4, stopping_metric = "AUC",
+    sample_rate = 0.8,
+    col_sample_rate = 0.8,
+    seed = 1234,
+    score_tree_interval = 10
+)
+gbm_ifl_auc <- h2o.auc(h2o.performance(gbm_ifl, valid = TRUE))
+gbm_path <- h2o.saveModel(object = gbm_ifl, path = "../models", force = TRUE)
 
 test <- read.csv("../data/test.csv",
     header = TRUE
@@ -79,43 +95,4 @@ test_sent <- ifelse(test_sent$sentiment == "positive", 1, 0)
 
 precision <- sum(preds & test_sent) / sum(preds)
 recall <- sum(preds & test_sent) / sum(test_sent)
-f_score1 <- 2 * precision * recall / (precision + recall)
-paste("F Score:", round(f_score1, 2))
-
-# automl
-y <- "sentiment"
-x <- setdiff(names(data), y)
-
-aml <- h2o.automl(
-    x = x, y = y,
-    training_frame = data,
-    max_models = 20,
-    seed = 1,
-    nfolds = 5
-)
-
-words <- tokenize(test$text)
-test_vecs <- h2o.transform(w2v_model, words, aggregate_method = "AVERAGE")
-
-lb <- h2o.get_leaderboard(object = aml, extra_columns = "ALL")
-
-preds <- .predict(test$text, w2v_model, aml@leader) %>%
-    as.data.frame() %>%
-    select(predict)
-preds <- ifelse(preds$predict == "positive", 1, 0)
-
-precision <- sum(preds & test_sent) / sum(preds)
-recall <- sum(preds & test_sent) / sum(test_sent)
-f_score2 <- 2 * precision * recall / (precision + recall)
-paste("F Score:", round(f_score2, 4))
-
-aml_path <- h2o.saveModel(
-    object = aml@leader,
-    path = "../models/", force = TRUE
-)
-
-f_scores <- data.frame(
-    model_type = c("GBM", "AML"),
-    f_score = c(f_score1, f_score2)
-)
-write.csv(f_scores, "../data/fscores.csv")
+f_score <- 2 * precision * recall / (precision + recall)
