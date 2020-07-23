@@ -175,7 +175,17 @@ table {
   overflow-x: auto; /* does not work because element is not block */
   /* white-space: nowrap; */
   counter-increment: caption;
+  margin-top: 20px;
 }
+
+figure {
+    margin-top: 20px;
+}
+
+img {
+    margin-top: 20px;
+}
+
 /* add bottom border on column table headings  */
 table tr > th[scope='col'] {
   border-bottom: 1.36px solid black;
@@ -207,11 +217,6 @@ caption {
   padding: 0 0.25em 0.25em;
   width: 100%;
   margin-left: 0;
-}
-
-caption::before {
-  content: 'Table ' counter(caption) '. ';
-  font-weight: bold;
 }
 
 /* allow scroll on the x-axis */
@@ -360,6 +365,7 @@ dl dd {
 h1 {
   font-size: 2rem;
   line-height: 3.25rem;
+  margin-top: 1.625rem;
   margin-bottom: 1.625rem;
 }
 
