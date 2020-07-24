@@ -8,6 +8,8 @@ output:
     smooth_scroll: true
     highlight: tango
     css: theme/style.css
+    toc: true
+    toc_depth: 2
 bibliography: 
     - /home/cjber/drive/bib/zbib.bib
     - bib/rbib.bib
@@ -24,6 +26,7 @@ if (!require("pacman")) install.packages("pacman")
 pkgs <- c(
     "rmarkdown",
     "knitr",
+    "benchmarkme", # machine information
     "bibtex", # include package refs
     "bookdown", # figure labels
     "twitteR", # interface with twitter api
@@ -59,7 +62,7 @@ With the presence of microblogging platforms such as Twitter, bulk information c
 
 Early sentiment analysis methodologies relied on ruled based approaches to categorisation, taking a dictionary of words, labelled with positive (1) or negative sentiment (-1), and simply summing the values for each word in a document to retrieve a sentiment score [@bakshi2016]. However, these techniques ignore the complex interactions between words and their context, meaning words with a particular tag may be incorrect. This can often be seen in rule based sentiment analysis where the word _"miss"_ is incorrectly identified as negative when used as a title [e.g. using @hu2004a].
 
-Rule based methods in the majority of NLP applications have largely been superseded in favour of machine learning, which tend to outperform previous methods with the use of some amount labelled data. While very recent developments in NLP now rely on large computationally expensive models, including pretrained word embeddings [@pennington2014], language models [@devlin2019], and deep neural networks. This report demonstrates the middle ground, and takes a relatively simple model to achieve good results without the reliance on effective, but computationally expensive modern techniques.
+Rule based methods in the majority of NLP applications have largely been superseded in favour of machine learning, which tend to outperform previous methods with the use of some amount labelled data. While very recent developments in NLP now rely on large computationally expensive models, using pretrained word embeddings [@pennington2014], language models [@devlin2019], and deep neural networks. This report demonstrates the middle ground, and takes a relatively simple model to achieve good results without the reliance on effective, but computationally expensive modern techniques.
 
 The model selected for this task is the Gradient Boosting Machine [GBM, @friedman2001], which takes an ensemble of weak decision trees which are sequentially built to minimise a loss function. GBM models are traditionally used for classification tasks [@friedman2001], providing interpretable results when using interpretable input parameters (unfortunately not the case in NLP with embeddings). The particular implementation used follows the algorithm specified by @friedman2001a:
 
@@ -85,15 +88,15 @@ Output $\hat{f}_{k}(x)=f_{k M}(x), k=1,2, \ldots, K$
 
 ---
 
-The following section will outline the methodology of this report, which is generally replicable using the accompanying `R` scripts. The next section will present the results, evaluating the models, and visualising the semantic information extracted from tweets. The final section will present conclusions and recommendations.
+The following section will outline the methodology of this report, which is replicable using the accompanying `R` scripts. The next section will present the results, evaluating the models, and visualising the semantic information extracted from tweets. The final section will present conclusions and recommendations.
 
 # Methodology
 
 The training data was first cleaned by removing any web addresses, numbers, username mentions (`@username`), hashtags (`#hashtag`), and long repeated characters using regular expressions. The text was then tokenized using simple space delimitation, and converted to all lowercase. Any word fewer than two characters was also removed. For this process see the [tokenization function](#tokenization).
 
-To prepare for use in the first model, Word2Vec [@mikolov2013] vector embeddings were created using the `h2o.word2vec` function, using these embeddings, each tweet was then encoded to a single dimension using the average of the word embeddings contained in the tweet, to obtain tweet embeddings (`h2o.transform`). 
+To prepare for use in the first model, Word2Vec [@mikolov2013] vector embeddings were created using the [`h2o.word2vec`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/word2vec.html) function, using these embeddings, each tweet was then encoded to a single dimension using the average of the word embeddings contained in the tweet, to obtain tweet embeddings ([`h2o.transform`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/word2vec.html#transforming-words-to-vectors)). 
 
-A Gradient Boosting Machine [GBM, @friedman2001] model was then built taking these 100 dimension embeddings as input. The model was evaluated using the Area Under the Curve (AUC) metric.  After determining that the model produced a suitable result, a further GBM was constructed using early stopping with a lower learning rate. This model also used 5 fold cross validation, and stochastic sampling of rows and columns to improve generalisation. As this model uses early stopping, the number of trees initialised was very high but were not expected to be fully utilised. The AUC of this model was obtained and compared with the base model. This model was then evaluated on unseen test data providing precision, recall, and an F~1~ Score.
+A Gradient Boosting Machine [GBM, @friedman2001] model was then built taking these 100 dimension embeddings as input ([`h2o.gbm`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/gbm.html)). The model was evaluated using the Area Under the Curve (AUC) metric.  After determining that the model produced a suitable result, a further GBM was constructed using early stopping with a lower learning rate. This model also used 5 fold cross validation, and stochastic sampling of rows and columns to improve generalisation. As this model uses early stopping, the number of trees initialised was very high but were not expected to be fully utilised. The AUC of this model was obtained and compared with the base model. This model was then evaluated on unseen test data providing precision, recall, and an F~1~ Score (See the [F Score chunk](#f-scores)).
 
 With this improved and generalisable sentiment analysis model, the sentiment of unlabelled tweets was extracted. The `twitteR` [@twitteR] package was used to interface with the [Twitter API](https://developer.twitter.com/ja/docs) and using the search phrases _"apple"_ and _"linux"_. The sentiment for 10,000 tweets for each phrase was then predicted using the GBM model. With predicted sentiment for these two phrases, the words associated with positive and negative tweets was identified, along with the overall general sentiment of each phrase. The [prediction function](#prediction) was used to perform predictions. While [Chatterplots](https://towardsdatascience.com/rip-wordclouds-long-live-chatterplots-e76a76896098) were used to visualise word level sentiment, see the [chatterplot functions](#chatterplot-setup).
 
@@ -254,7 +257,7 @@ gg_scattertext(linux_plot$word, linux_plot$preds, linux_plot$count)
 Figure \@ref(fig:appleplt) shows prominent positive mentions of _"music"_ in Apple related tweets, probably linked with [_"Apple Music"_](https://www.apple.com/uk/music/). Unlike Linux related tweets, there are overall less negative sentiments, with some small negativity directed towards _"youtube"_ and _"iphone"_. 
 
 
-```{r appleplt, fig.cap = "Chatterplet showing words and their associated sentiment in relation to tweets contaiing the word Apple. Large words are more frequent."}
+```{r appleplt, fig.cap = "Chatterplot showing words and their associated sentiment in relation to tweets contaiing the word Apple. Large words are more frequent."}
 apple_plot <- apple$text %>%
     filter_words() %>%
     as.data.frame() %>%
@@ -277,7 +280,6 @@ apple_plot <- apple$text %>%
         !grepl("Pro", word, ignore.case = TRUE),
         !grepl("700", word, ignore.case = TRUE)
     ) %>%
-    # add one so no log(0)
     summarise(preds = sum(preds), count = n()) %>%
     arrange(desc(count)) %>%
     head(50)
@@ -285,11 +287,29 @@ apple_plot <- apple$text %>%
 gg_scattertext(apple_plot$word, apple_plot$preds, apple_plot$count)
 ```
 
+Between the two plots, it is clear that the language used in tweets refer to different topics, despite in theory both relating to Unix-like operating systems. From the perspective of these Chatterplots, it may be assumed that users of the Linux operating system tend to enjoy machine learning and similar topics, while they harbour a deep relentless hatred for the Windows operating system. While Apple users are massively fond of music and some popular culture. In reality, from inspection of the raw data, it is clear that tweets extracted in relation to Apple contain a very large amount of spam and advertising:
+
+> "Want to #win the long-awaited Apple iPhone SE2? \@Gleamapp is giving away this amazing new upgrade to one lucky winn… https://t.co/eQc3uXpulo"
+
+Despite using the Twitter API to select only English language tweets, many also contain foreign languages which are not handled by the model:
+
+> "RT \@THRihanna: ประสาทจะแดกแต่เช้า ล่าสุด FENTY แบรนด์เสื้อผ้าของ Rihanna ปล่อยเพลงลงบน Apple Music แต่อีเจ้าของแบรนด์ก็ยังไม่ปล่อยเหมือนเดิ…"
+
+Also note that this tweet is a retweet, which were marked for exclusion at the API querying stage. 
+
+Spam detection is an active area of research in NLP, and methods have been developed for Twitter [@wang2010]. However, it was out of the scope of this report to attempt to clean the dataset to this extent. 
+
 # Conclusion
+
+With the abstractions provided by modern machine learning libraries, it is now possible to construct a pipeline for NLP sentiment analysis using moderately complex methods which achieve excellent baseline results, without having to build the perquisite systems. The F~1~ score of `r round(f_score, 3)` is impressive, given the complex interactions everyday language contains, especially considering that inter-annotator agreement in many NLP tasks is often low in comparison with other machine learning implementations [See @ogren2006;@bruce1998 for example].
+
+Using Chatterplots as a Word Cloud alternative enables a deeper investigation of the components influencing the sentiment associated with tweets in this study. A word cloud for example may not have revealed the extent to which _"Windows"_ influenced the negative sentiment in Linux related tweets.
 
 ## Recommendations
 
-Test.
+The `h2o` R library is recommended for the building of fast and iterative experimentation, as an alternative to fast, but inaccurate basic statistical methods such as linear regression. This library also provides an interface to the `AutoML` algorithm, which was explored as part of this report, but removed for brevity. `AutoML` automates the model selection process, and allows the user to instantly select the highest performing model for a particular task.
+
+This report also highly recommends the use of Chatterplots as an improved, more scientifically grounded, alternative to Word Clouds.
 
 <hr>
 Word count: `r wordcountaddin::word_count(rprojroot::thisfile())`
@@ -299,35 +319,61 @@ Word count: `r wordcountaddin::word_count(rprojroot::thisfile())`
 
 <div id="refs"></div>
 
-# Functions Appendix {-}
+# Appendix {-}
 
-## Preprocessing and Modelling {-}
+## Functions Appendix {-}
+
+### Preprocessing and Modelling {-}
 
 ```{r echo = FALSE}
 knitr::read_chunk("../scripts/functions.R")
 ```
 
-### Tokenization {-}
+#### Tokenization {-}
 
 ```{r tokenizetext, eval = FALSE, echo = TRUE}
 ```
 
-### Prediction {-}
+#### Prediction {-}
 ```{r prediction, eval = FALSE, echo = TRUE}
 ```
 
-## Figures {-}
+#### F Scores {-}
+```{r ref.label='fscore', eval = FALSE, echo = TRUE}
+```
 
-### Chatterplot Setup {-}
+### Figures {-}
+
+#### Chatterplot Setup {-}
 
 ```{r ref.label='chatterplot', eval = FALSE, echo = TRUE}
 ```
 
-### Example Chatterplot {-}
+#### Example Chatterplot {-}
 
 ```{r ref.label='linuxplt', eval = FALSE, echo = TRUE}
 ```
 
-# Full Code Appendix
+## Full Code Appendix {-}
 
-The full code is available [here](https://github.com/cjber/h2o_sentiment_tweets).
+<hr>
+Available on GitHub [HERE](https://github.com/cjber/h2o_sentiment_tweets).
+<hr>
+
+## Session Information {-}
+
+```{r}
+# Return the machine CPU
+cat("Machine: ", benchmarkme::get_cpu()$model_name)
+
+# Return machine cores
+cat("Logical Cores: ", benchmarkme::get_cpu()$no_of_cores)
+
+# Return the machine RAM
+cat("RAM: ", benchmarkme::get_ram())
+
+x <- sessionInfo()
+x$loadedOnly <- NULL
+print(x, locale = F)
+```
+
