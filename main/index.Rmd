@@ -22,11 +22,13 @@ link-citations: true
 if (!require("cjrmd")) devtools::install_github("cjber/cjrmd")
 cjrmd::default_html_chunk_opts()
 
+# install (if needed) and load libraries
 if (!require("pacman")) install.packages("pacman")
 pkgs <- c(
     "rmarkdown",
     "knitr",
     "benchmarkme", # machine information
+    "rbenchmark", # for timing functions
     "bibtex", # include package refs
     "bookdown", # figure labels
     "twitteR", # interface with twitter api
@@ -36,8 +38,9 @@ pkgs <- c(
     "showtext", # include google fonts
     "tidyverse" # opinionated syntax structures etc
 )
-
 pacman::p_load(pkgs, character.only = T)
+
+# write some references to a bib file
 write.bib(pkgs, "bib/rbib.bib")
 write.bib("base", "bib/rbib.bib", append = TRUE)
 
@@ -62,7 +65,7 @@ With the presence of microblogging platforms such as Twitter, bulk information c
 
 Early sentiment analysis methodologies relied on ruled based approaches to categorisation, taking a dictionary of words, labelled with positive (1) or negative sentiment (-1), and simply summing the values for each word in a document to retrieve a sentiment score [@bakshi2016]. However, these techniques ignore the complex interactions between words and their context, meaning words with a particular tag may be incorrect. This can often be seen in rule based sentiment analysis where the word _"miss"_ is incorrectly identified as negative when used as a title [e.g. using @hu2004a].
 
-Rule based methods in the majority of NLP applications have largely been superseded in favour of machine learning, which tend to outperform previous methods with the use of some amount labelled data. While very recent developments in NLP now rely on large computationally expensive models, using pretrained word embeddings [@pennington2014], language models [@devlin2019], and deep neural networks. This report demonstrates the middle ground, and takes a relatively simple model to achieve good results without the reliance on effective, but computationally expensive modern techniques.
+Rule based methods in the majority of NLP applications have largely been superseded in favour of machine learning, which tend to outperform previous methods by feeding in some amount labelled data. While very recent developments in NLP now rely on large computationally expensive models, using pretrained word embeddings [@pennington2014], language models [@devlin2019], and deep neural networks. This report demonstrates the middle ground, and takes a relatively simple model to achieve good results without the reliance on effective, but computationally expensive modern techniques.
 
 The model selected for this task is the Gradient Boosting Machine [GBM, @friedman2001], which takes an ensemble of weak decision trees which are sequentially built to minimise a loss function. GBM models are traditionally used for classification tasks [@friedman2001], providing interpretable results when using interpretable input parameters (unfortunately not the case in NLP with embeddings). The particular implementation used follows the algorithm specified by @friedman2001a:
 
@@ -158,16 +161,16 @@ Table \@ref(tab:confusion1) and Table \@ref(tab:confusion2) give the confusion m
 
 ```{r confusion1}
 h2o.confusionMatrix(
-  h2o.performance(gbm_base_model, valid = TRUE)
+    h2o.performance(gbm_base_model, valid = TRUE)
 ) %>%
-  cjrmd::make_html_table(cap = "Confusion Matrix for Base GBM Model.")
+    cjrmd::make_html_table(cap = "Confusion Matrix for Base GBM Model.")
 ```
 
 ```{r confusion2}
 h2o.confusionMatrix(
-  h2o.performance(gbm_model, valid = TRUE)
+    h2o.performance(gbm_model, valid = TRUE)
 ) %>%
-  cjrmd::make_html_table(cap = "Confusion Matrix for Improved GBM Model.")
+    cjrmd::make_html_table(cap = "Confusion Matrix for Improved GBM Model.")
 ```
 
 Following this, the second model was used to predict sentiment for tweets containing the word Linux, and the word Apple. Overall sentiment was then evaluated by taking the sum of all positive tweets, divided by the total number of tweets. Linux related tweets gave a ratio of `r round(sum(linux_preds) / nrow(linux_preds), 3)`, while Apple related tweets gave a ratio of `r round(sum(apple_preds) / nrow(apple_preds), 3)`. 
@@ -286,7 +289,6 @@ apple_plot <- apple$text %>%
 
 gg_scattertext(apple_plot$word, apple_plot$preds, apple_plot$count)
 ```
-
 Between the two plots, it is clear that the language used in tweets refer to different topics, despite in theory both relating to Unix-like operating systems. From the perspective of these Chatterplots, it may be assumed that users of the Linux operating system tend to enjoy machine learning and similar topics, while they harbour a deep relentless hatred for the Windows operating system. While Apple users are massively fond of music and some popular culture. In reality, from inspection of the raw data, it is clear that tweets extracted in relation to Apple contain a very large amount of spam and advertising:
 
 > "Want to #win the long-awaited Apple iPhone SE2? \@Gleamapp is giving away this amazing new upgrade to one lucky winn… https://t.co/eQc3uXpulo"
@@ -298,6 +300,73 @@ Despite using the Twitter API to select only English language tweets, many also 
 Also note that this tweet is a retweet, which were marked for exclusion at the API querying stage. 
 
 Spam detection is an active area of research in NLP, and methods have been developed for Twitter [@wang2010]. However, it was out of the scope of this report to attempt to clean the dataset to this extent. 
+
+## Benchmarking
+
+Table \@ref(tab:bmtable) gives an overview of the time elapsed for each model constructed in this report. The column of interest is _"elapsed"_ which gives the total time in seconds required to run the model. This essentially shows that it is possible to run this pipeline in under 3 minutes, even with the inclusion of cross validation. Given the relatively small increase in AUC between the GBM models, it may also be more appropriate to select the baseline model which computes 40+ times faster than the cross validated model.
+
+```{r, cache = TRUE, include = FALSE}
+train <- read.csv("../data/train.csv",
+    header = TRUE
+) %>%
+    filter(sentiment != "neutral") %>%
+    mutate(sentiment = as.factor(sentiment)) %>%
+    as.h2o()
+
+words <- tokenize(train$text)
+tweet_vecs <- h2o.transform(w2v_model,
+    words,
+    aggregate_method = "AVERAGE"
+)
+data <- h2o.cbind(
+    train["sentiment"],
+    tweet_vecs
+) %>% na.omit()
+data_split <- h2o.splitFrame(data, ratios = 0.8, seed = 1234)
+
+bench <- benchmark(
+    "W2V" = {
+        h2o.word2vec(words, sent_sample_rate = 0, epochs = 10)
+    },
+    "GBM" = {
+        # Gradient Boosting Machine
+        gbm_model <- h2o.gbm(
+            x = names(tweet_vecs),
+            y = "sentiment",
+            training_frame = data_split[[1]],
+            validation_frame = data_split[[2]],
+            seed = 1234
+        )
+    },
+
+    "GBM 2" = {
+        h2o.gbm(
+            x = names(tweet_vecs),
+            y = "sentiment",
+            training_frame = data_split[[1]],
+            validation_frame = data_split[[2]],
+            ntrees = 10000,
+            learn_rate = 0.01,
+            stopping_rounds = 5, stopping_tolerance = 1e-4, stopping_metric = "AUC",
+            sample_rate = 0.8,
+            col_sample_rate = 0.8,
+            seed = 1234,
+            score_tree_interval = 10,
+            nfolds = 5
+        )
+    },
+    replications = 1,
+    columns = c(
+        "test", "replications", "elapsed",
+        "relative", "user.self", "sys.self"
+    )
+)
+```
+
+```{r bmtable}
+bench %>%
+    cjrmd::make_html_table(cap = "Benchmarking the models used in this report.")
+```
 
 # Conclusion
 
@@ -376,4 +445,3 @@ x <- sessionInfo()
 x$loadedOnly <- NULL
 print(x, locale = F)
 ```
-
