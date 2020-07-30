@@ -1,5 +1,5 @@
 ---
-title: 'Machine Learning for Tweet Sentiment Detection with H2O'
+title: 'Machine Learning for tweet Sentiment Detection with H2O'
 author: '201374125'
 date: '`r format(Sys.time(), "%d %B, %Y")`'
 output:
@@ -53,9 +53,9 @@ test <- read.csv("../data/test.csv")
 
 # Executive Summary {-}
 
-This report presents the results of a Natural Language sentiment analysis exercise using a dataset containing `r format(nrow(train), big.mark=',')` labelled tweets created by [Figure Eight's Data for Everyone platform](https://appen.com/resources/datasets/) and accessed through [Kaggle](https://kaggle.com). There is also an included test dataset with `r format(nrow(test), big.mark=',')` labelled tweets for evaluation. The data is licenced under the [creative commons attribution 4.0. international licence](https://creativecommons.org/licenses/by/4.0/).
+This report presents the results of a Natural Language sentiment analysis exercise using a dataset containing `r format(nrow(train), big.mark=',')` labelled tweets created by [Figure Eight's Data for Everyone platform](https://appen.com/resources/datasets/) and accessed through [Kaggle](https://www.kaggle.com/c/tweet-sentiment-extraction). There is also an included test dataset with `r format(nrow(test), big.mark=',')` labelled tweets for evaluation. The data is licenced under the [creative commons attribution 4.0. international licence](https://creativecommons.org/licenses/by/4.0/).
 
-The [R](https://www.r-project.org/) [@base] package `h2o` [@h2o] is primarily used for the construction of models in this report, providing high level abstractions for working with state of the art machine learning algorithms. This work aims to demonstrate the ability to construct a simplistic pipeline for sentiment analysis of Tweets without the computationally expensive modern Natural Language Processing (NLP) techniques.
+The [R](https://www.r-project.org/) [@base] package `h2o` [@h2o] is primarily used for the construction of models in this report, providing high level abstractions for working with state of the art machine learning algorithms. This work aims to demonstrate the ability to construct a simplistic pipeline for sentiment analysis of tweets without the computationally expensive modern Natural Language Processing (NLP) techniques.
 
 This report was compiled using R Markdown [@rmarkdown1], with the Bookdown package [@bookdown1], and a [CSS theme](https://github.com/vincentdoerig/latex-css) created to resemble LaTeX.
 
@@ -65,7 +65,7 @@ With the presence of microblogging platforms such as Twitter, bulk information c
 
 Early sentiment analysis methodologies relied on ruled based approaches to categorisation, taking a dictionary of words, labelled with positive (1) or negative sentiment (-1), and simply summing the values for each word in a document to retrieve a sentiment score [@bakshi2016]. However, these techniques ignore the complex interactions between words and their context, meaning words with a particular tag may be incorrect. This can often be seen in rule based sentiment analysis where the word _"miss"_ is incorrectly identified as negative when used as a title [e.g. using @hu2004a].
 
-Rule based methods in the majority of NLP applications have largely been superseded in favour of machine learning, which tend to outperform previous methods by feeding in some amount labelled data. While very recent developments in NLP now rely on large computationally expensive models, using pretrained word embeddings [@pennington2014], language models [@devlin2019], and deep neural networks. This report demonstrates the middle ground, and takes a relatively simple model to achieve good results without the reliance on effective, but computationally expensive modern techniques.
+Rule based methods in the majority of NLP applications have largely been superseded in favour of machine learning, which tend to outperform previous methods by feeding in some amount labelled data. While very recent developments in NLP now rely on large computationally expensive models, using pretrained word embeddings [@pennington2014], language models [@devlin2019], and deep neural networks, this report demonstrates the middle ground, and takes a relatively simple model to achieve good results without the reliance on effective, but computationally expensive modern techniques.
 
 The model selected for this task is the Gradient Boosting Machine [GBM, @friedman2001], which takes an ensemble of weak decision trees which are sequentially built to minimise a loss function. GBM models are traditionally used for classification tasks [@friedman2001], providing interpretable results when using interpretable input parameters (unfortunately not the case in NLP with embeddings). The particular implementation used follows the algorithm specified by @friedman2001a:
 
@@ -91,17 +91,17 @@ Output $\hat{f}_{k}(x)=f_{k M}(x), k=1,2, \ldots, K$
 
 ---
 
-The following section will outline the methodology of this report, which is replicable using the accompanying `R` scripts. The next section will present the results, evaluating the models, and visualising the semantic information extracted from tweets. The final section will present conclusions and recommendations.
+The following section will outline the methodology of this report, which is replicable using the accompanying `R` scripts, also available on the [Github Repository](https://github.com/cjber/h2o_sentiment_tweets). The next section will present the results, evaluating the models, and visualising the semantic information extracted from tweets. The final section will present conclusions and recommendations.
 
 # Methodology
 
-The training data was first cleaned by removing any web addresses, numbers, username mentions (`@username`), hashtags (`#hashtag`), and long repeated characters using regular expressions. The text was then tokenized using simple space delimitation, and converted to all lowercase. Any word fewer than two characters was also removed. For this process see the [tokenization function](#tokenization).
+The training data was first cleaned by removing any web addresses, numbers, username mentions (`@username`), hashtags (`#hashtag`), and long repeated characters using regular expressions. The text was then tokenized using simple space delimitation, and converted to all lowercase. Any word fewer than two characters was also removed. For this process see the [tokenization function](#tokenization). Additionally, any tweets containing neutral sentiment were removed to simplify the methodology by creating a binary classification task.
 
-To prepare for use in the first model, Word2Vec [@mikolov2013] vector embeddings were created using the [`h2o.word2vec`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/word2vec.html) function, using these embeddings, each tweet was then encoded to a single dimension using the average of the word embeddings contained in the tweet, to obtain tweet embeddings ([`h2o.transform`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/word2vec.html#transforming-words-to-vectors)). 
+To prepare for use in the first model, Word2Vec [@mikolov2013] word vector embeddings were created using the [`h2o.word2vec`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/word2vec.html) function, using these embeddings, each tweet was then encoded to a single dimension using the average of the word embeddings contained in the tweet, to obtain tweet embeddings ([`h2o.transform`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/word2vec.html#transforming-words-to-vectors)). 
 
-A Gradient Boosting Machine [GBM, @friedman2001] model was then built taking these 100 dimension embeddings as input ([`h2o.gbm`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/gbm.html)). The model was evaluated using the Area Under the Curve (AUC) metric.  After determining that the model produced a suitable result, a further GBM was constructed using early stopping with a lower learning rate. This model also used 5 fold cross validation, and stochastic sampling of rows and columns to improve generalisation. As this model uses early stopping, the number of trees initialised was very high but were not expected to be fully utilised. The AUC of this model was obtained and compared with the base model. This model was then evaluated on unseen test data providing precision, recall, and an F~1~ Score (See the [F Score chunk](#f-scores)).
+A Gradient Boosting Machine [GBM, @friedman2001] model was then built taking these 100 dimension embeddings as input ([`h2o.gbm`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/gbm.html)). The model was evaluated using the Area Under the Curve (AUC) metric.  After determining that the model produced a suitable result, a further GBM was constructed using early stopping with a lower learning rate. This model also used 5 fold cross validation, and stochastic sampling of rows and columns to improve generalisation. As this model uses early stopping, the number of trees initialised was very high but were not expected to be fully utilised. The AUC of this model was obtained and compared with the base model. This model was then evaluated on unseen test data providing precision, recall, and an F~1~ Score (See the [F Score code](#f-scores)).
 
-With this improved and generalisable sentiment analysis model, the sentiment of unlabelled tweets was extracted. The `twitteR` [@twitteR] package was used to interface with the [Twitter API](https://developer.twitter.com/ja/docs) and using the search phrases _"apple"_ and _"linux"_. The sentiment for 10,000 tweets for each phrase was then predicted using the GBM model. With predicted sentiment for these two phrases, the words associated with positive and negative tweets was identified, along with the overall general sentiment of each phrase. The [prediction function](#prediction) was used to perform predictions. While [Chatterplots](https://towardsdatascience.com/rip-wordclouds-long-live-chatterplots-e76a76896098) were used to visualise word level sentiment, see the [chatterplot functions](#chatterplot-setup).
+With this improved and generalisable sentiment analysis model, the sentiment of unlabelled tweets was extracted. The `twitteR` [@twitteR] package was used to interface with the [Twitter API](https://developer.twitter.com/ja/docs) and using the search phrases _"apple"_ and _"linux"_. The sentiment for 10,000 tweets for each phrase was then predicted using the GBM model. With predicted sentiment for these two phrases, the words associated with positive and negative tweets were identified, along with the overall general sentiment of each phrase. The [prediction function](#prediction) was used to perform predictions. While [Chatterplots](https://towardsdatascience.com/rip-wordclouds-long-live-chatterplots-e76a76896098) were used to visualise word level sentiment (see the [chatterplot functions](#chatterplot-setup)).
 
 # Results
 
@@ -260,7 +260,7 @@ gg_scattertext(linux_plot$word, linux_plot$preds, linux_plot$count)
 Figure \@ref(fig:appleplt) shows prominent positive mentions of _"music"_ in Apple related tweets, probably linked with [_"Apple Music"_](https://www.apple.com/uk/music/). Unlike Linux related tweets, there are overall less negative sentiments, with some small negativity directed towards _"youtube"_ and _"iphone"_. 
 
 
-```{r appleplt, fig.cap = "Chatterplot showing words and their associated sentiment in relation to tweets contaiing the word Apple. Large words are more frequent."}
+```{r appleplt, fig.cap = "Chatterplot showing words and their associated sentiment in relation to tweets containing the word Apple. Large words are more frequent."}
 apple_plot <- apple$text %>%
     filter_words() %>%
     as.data.frame() %>%
@@ -289,7 +289,7 @@ apple_plot <- apple$text %>%
 
 gg_scattertext(apple_plot$word, apple_plot$preds, apple_plot$count)
 ```
-Between the two plots, it is clear that the language used in tweets refer to different topics, despite in theory both relating to Unix-like operating systems. From the perspective of these Chatterplots, it may be assumed that users of the Linux operating system tend to enjoy machine learning and similar topics, while they harbour a deep relentless hatred for the Windows operating system. While Apple users are massively fond of music and some popular culture. In reality, from inspection of the raw data, it is clear that tweets extracted in relation to Apple contain a very large amount of spam and advertising:
+Between the two plots, it is clear that the language used in tweets refer to different topics. From the perspective of these Chatterplots, it may be assumed that users of the Linux operating system tend to enjoy machine learning and similar topics, while they harbour a deep relentless hatred for the Windows operating system. While Apple users are massively fond of music and some popular culture. In reality, from inspection of the raw data, it is clear that tweets extracted in relation to Apple contain a very large amount of spam and advertising:
 
 > "Want to #win the long-awaited Apple iPhone SE2? \@Gleamapp is giving away this amazing new upgrade to one lucky winn… https://t.co/eQc3uXpulo"
 
